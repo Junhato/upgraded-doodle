@@ -1,18 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { usePatientStore } from './patientStore';
+import { observer } from 'mobx-react-lite';
+import { patientStore, PatientModel } from './stores/patientStore';
 import { NewPatientForm } from './NewPatientForm';
-import { Table, TableBody } from "flowbite-react";
-import type { EditingPatient, Filters, SortField, SortDirection, EditingDate } from './types';
+import { Table, TableBody, Pagination } from "flowbite-react";
+import type { Filters, SortField, SortDirection, EditingDate } from './types';
 import { sortPatients } from './utils';
 import { PatientFilters } from './PatientFilters';
 import { PatientTableHeader } from './PatientTableHeader';
 import { PatientTableRow } from './PatientTableRow';
 
-export const PatientTable: React.FC = () => {
-  const { patients, loading, error, fetchPatients, deletePatient, updatePatient } = usePatientStore();
+export const PatientTable: React.FC = observer(() => {
   const [isNewPatientFormOpen, setIsNewPatientFormOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(10);
   const [filters, setFilters] = useState<Filters>({
     name: '',
     dateOfBirth: {
@@ -28,14 +30,14 @@ export const PatientTable: React.FC = () => {
     state: ''
   });
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingPatient, setEditingPatient] = useState<EditingPatient | null>(null);
+  const [editingPatient, setEditingPatient] = useState<PatientModel | null>(null);
   const [editingDate, setEditingDate] = useState<EditingDate>({ month: '', day: '', year: '' });
   const [sortField, setSortField] = useState<SortField>('firstName');
   const [sortDirection, setSortDirection] = useState<SortDirection>(null);
 
   useEffect(() => {
-    fetchPatients();
-  }, [fetchPatients]);
+    patientStore.fetchPatients();
+  }, []);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -52,13 +54,13 @@ export const PatientTable: React.FC = () => {
 
   const handleDeletePatient = async (id: string) => {
     try {
-      await deletePatient(id);
+      patientStore.deletePatient(id);
     } catch (error) {
       console.error('Failed to delete patient:', error);
     }
   };
 
-  const handleEditClick = (patient: EditingPatient) => {
+  const handleEditClick = (patient: PatientModel) => {
     setEditingId(patient.id);
     setEditingPatient(patient);
     
@@ -86,9 +88,9 @@ export const PatientTable: React.FC = () => {
         parseInt(editingDate.day)
       ).toISOString();
 
-      await updatePatient(editingPatient.id, {
+      await patientStore.updatePatient(editingPatient.id, {
         ...editingPatient,
-        dateOfBirth
+        dateOfBirth,
       });
       setEditingId(null);
       setEditingPatient(null);
@@ -98,9 +100,9 @@ export const PatientTable: React.FC = () => {
     }
   };
 
-  const handleFieldChange = (field: keyof EditingPatient, value: string) => {
+  const handleFieldChange = (field: keyof PatientModel, value: string) => {
     if (!editingPatient) return;
-    setEditingPatient({ ...editingPatient, [field]: value });
+    setEditingPatient(new PatientModel({ ...editingPatient, [field]: value }));
   };
 
   const handleDateChange = (field: keyof EditingDate, value: string) => {
@@ -137,7 +139,7 @@ export const PatientTable: React.FC = () => {
 
   // Filter patients based on search term and filters
   const filteredPatients = sortPatients(
-    patients.filter((patient) => {
+    patientStore.patientList.filter((patient) => {
       const matchesSearch = searchTerm === '' || 
         `${patient.firstName} ${patient.lastName}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
         patient.status.toLowerCase().includes(searchTerm.toLowerCase());
@@ -186,7 +188,17 @@ export const PatientTable: React.FC = () => {
     sortDirection
   );
 
-  if (loading) {
+  // Calculate pagination
+  const totalPages = Math.ceil(filteredPatients.length / itemsPerPage);
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredPatients.slice(indexOfFirstItem, indexOfLastItem);
+
+  const onPageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  if (patientStore.loading) {
     return (
       <div className="flex justify-center items-center h-64">
         <div className="text-gray-600">Loading patients...</div>
@@ -194,15 +206,15 @@ export const PatientTable: React.FC = () => {
     );
   }
 
-  if (error) {
+  if (patientStore.error) {
     return (
       <div className="flex justify-center items-center h-64">
-        <div className="text-red-600">Error: {error}</div>
+        <div className="text-red-600">Error: {patientStore.error}</div>
       </div>
     );
   }
 
-  if (patients.length === 0) {
+  if (patientStore.patientList.length === 0) {
     return (
       <>
         <div className="flex flex-col items-center justify-center h-96 bg-white rounded-lg shadow">
@@ -258,7 +270,7 @@ export const PatientTable: React.FC = () => {
               onSort={handleSort}
             />
             <TableBody>
-              {filteredPatients.map((patient) => (
+              {currentItems.map((patient) => (
                 <PatientTableRow
                   key={patient.id}
                   patient={patient}
@@ -275,6 +287,35 @@ export const PatientTable: React.FC = () => {
               ))}
             </TableBody>
           </Table>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center mt-4">
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={onPageChange}
+                showIcons
+                theme={{
+                  pages: {
+                    base: "xs:mt-0 mt-2 inline-flex items-center -space-x-px",
+                    showIcon: "inline-flex",
+                    previous: {
+                      base: "ml-0 rounded-l-lg border border-gray-300 bg-white py-2 px-3 leading-tight text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white",
+                      icon: "h-5 w-5"
+                    },
+                    next: {
+                      base: "rounded-r-lg border border-gray-300 bg-white py-2 px-3 leading-tight text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white",
+                      icon: "h-5 w-5"
+                    },
+                    selector: {
+                      base: "w-12 border border-gray-300 bg-white py-2 leading-tight text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white",
+                      active: "bg-blue-50 text-blue-600 hover:bg-blue-100 hover:text-blue-700 dark:border-gray-700 dark:bg-gray-700 dark:text-white",
+                      disabled: "opacity-50 cursor-normal"
+                    }
+                  }
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
       <NewPatientForm
@@ -283,4 +324,4 @@ export const PatientTable: React.FC = () => {
       />
     </>
   );
-}; 
+}); 

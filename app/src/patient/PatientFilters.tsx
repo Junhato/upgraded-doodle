@@ -1,7 +1,11 @@
 import React, { useState, useCallback } from 'react';
+import type { KeyboardEvent } from 'react';
 import { Button, TextInput, Select, Datepicker, Label } from 'flowbite-react';
 import { FunnelIcon, XMarkIcon, MagnifyingGlassIcon, ChevronDownIcon } from '@heroicons/react/24/outline';
 import type { Filters } from './types';
+import { FilterPopout } from './components/FilterPopout';
+import { FilterTags } from './components/FilterTags';
+import { formatDateRange, getInitialTempFilters, resetFilter } from './utils/filterUtils';
 
 interface PatientFiltersProps {
   filters: Filters;
@@ -25,104 +29,111 @@ export const PatientFilters: React.FC<PatientFiltersProps> = ({
   onAddNewPatient,
 }) => {
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [tempFilters, setTempFilters] = useState(getInitialTempFilters());
 
   const toggleFilter = (filterName: string) => {
     setActiveFilter(activeFilter === filterName ? null : filterName);
+    if (filterName === 'name') setTempFilters(prev => ({ ...prev, name: filters.name }));
+    if (filterName === 'city') setTempFilters(prev => ({ ...prev, city: filters.city }));
+    if (filterName === 'state') setTempFilters(prev => ({ ...prev, state: filters.state }));
   };
 
   const handleFilterChange = useCallback((field: keyof Filters, value: any) => {
-    onFilterChange(field, value);
-    setActiveFilter(null); // Close the filter panel after setting a value
+    if (field === 'dateOfBirth' || field === 'createdAt' || field === 'status') {
+      onFilterChange(field, value);
+      setActiveFilter(null);
+    }
   }, [onFilterChange]);
 
-  const formatDateRange = (from: Date | null, to: Date | null) => {
-    if (!from && !to) return '';
-    if (from && to) return `${from.toLocaleDateString()} - ${to.toLocaleDateString()}`;
-    if (from) return `From ${from.toLocaleDateString()}`;
-    return `Until ${to!.toLocaleDateString()}`;
+  const handleTextFilterChange = (field: 'name' | 'city' | 'state', value: string) => {
+    setTempFilters(prev => ({ ...prev, [field]: value }));
+  };
+
+  const applyTextFilter = (field: 'name' | 'city' | 'state') => {
+    onFilterChange(field, tempFilters[field]);
+    setActiveFilter(null);
+  };
+
+  const handleTextFilterKeyDown = (e: KeyboardEvent<HTMLInputElement>, field: 'name' | 'city' | 'state') => {
+    if (e.key === 'Enter') {
+      applyTextFilter(field);
+    }
   };
 
   const removeFilter = (field: keyof Filters) => {
-    if (field === 'dateOfBirth') {
-      handleFilterChange(field, { from: null, to: null });
-    } else if (field === 'createdAt') {
-      handleFilterChange(field, { from: null, to: null });
-    } else {
-      handleFilterChange(field, '');
-    }
+    onFilterChange(field, resetFilter(field, filters[field]));
   };
 
-  const FilterPopout = ({ isOpen, onClose, children }: { isOpen: boolean; onClose: () => void; children: React.ReactNode }) => {
-    if (!isOpen) return null;
-
-    return (
-      <div className="absolute z-10 mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 border border-gray-200 dark:border-gray-700">
-        {children}
-      </div>
-    );
-  };
-
-  const renderFilterTags = () => {
-    const tags = [];
-
-    if (filters.name) {
-      tags.push(
-        <div key="name" className="flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-          <span>Name: {filters.name}</span>
-          <XMarkIcon className="h-4 w-4 cursor-pointer" onClick={() => removeFilter('name')} />
+  const renderTextFilter = (field: 'name' | 'city' | 'state', label: string) => (
+    <div className="relative">
+      <Button
+        color={filters[field] ? "info" : "gray"}
+        onClick={() => toggleFilter(field)}
+        className="flex items-center gap-2"
+      >
+        <span>{label}</span>
+        <ChevronDownIcon className={`h-4 w-4 transition-transform ${activeFilter === field ? 'rotate-180' : ''}`} />
+      </Button>
+      <FilterPopout isOpen={activeFilter === field} onClose={() => applyTextFilter(field)}>
+        <div className="w-64">
+          <Label htmlFor={`${field}-filter`}>Filter by {field}</Label>
+          <TextInput
+            id={`${field}-filter`}
+            sizing="sm"
+            placeholder={`Enter ${field}...`}
+            value={tempFilters[field]}
+            onChange={(e) => handleTextFilterChange(field, e.target.value)}
+            onKeyDown={(e) => handleTextFilterKeyDown(e, field)}
+            onBlur={() => applyTextFilter(field)}
+            className="mt-2"
+          />
         </div>
-      );
-    }
+      </FilterPopout>
+    </div>
+  );
 
-    if (filters.city) {
-      tags.push(
-        <div key="city" className="flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-          <span>City: {filters.city}</span>
-          <XMarkIcon className="h-4 w-4 cursor-pointer" onClick={() => removeFilter('city')} />
+  const renderDateFilter = (
+    field: 'dateOfBirth' | 'createdAt',
+    label: string,
+    buttonLabel: string
+  ) => (
+    <div className="relative">
+      <Button
+        color={filters[field].from || filters[field].to ? "info" : "gray"}
+        onClick={() => toggleFilter(field)}
+        className="flex items-center gap-2"
+      >
+        <span>{buttonLabel}</span>
+        <ChevronDownIcon className={`h-4 w-4 transition-transform ${activeFilter === field ? 'rotate-180' : ''}`} />
+      </Button>
+      <FilterPopout isOpen={activeFilter === field} onClose={() => setActiveFilter(null)}>
+        <div className="w-72 space-y-4">
+          <div>
+            <Label htmlFor={`${field}-from`}>From</Label>
+            <Datepicker
+              id={`${field}-from`}
+              sizing="sm"
+              placeholder="From date..."
+              value={filters[field].from}
+              onChange={(date) => handleFilterChange(field, { ...filters[field], from: date })}
+              className="mt-2"
+            />
+          </div>
+          <div>
+            <Label htmlFor={`${field}-to`}>To</Label>
+            <Datepicker
+              id={`${field}-to`}
+              sizing="sm"
+              placeholder="To date..."
+              value={filters[field].to}
+              onChange={(date) => handleFilterChange(field, { ...filters[field], to: date })}
+              className="mt-2"
+            />
+          </div>
         </div>
-      );
-    }
-
-    if (filters.state) {
-      tags.push(
-        <div key="state" className="flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-          <span>State: {filters.state}</span>
-          <XMarkIcon className="h-4 w-4 cursor-pointer" onClick={() => removeFilter('state')} />
-        </div>
-      );
-    }
-
-    if (filters.status) {
-      tags.push(
-        <div key="status" className="flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-          <span>Status: {filters.status}</span>
-          <XMarkIcon className="h-4 w-4 cursor-pointer" onClick={() => removeFilter('status')} />
-        </div>
-      );
-    }
-
-    const dateOfBirthRange = formatDateRange(filters.dateOfBirth.from, filters.dateOfBirth.to);
-    if (dateOfBirthRange) {
-      tags.push(
-        <div key="dateOfBirth" className="flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-          <span>Birth Date: {dateOfBirthRange}</span>
-          <XMarkIcon className="h-4 w-4 cursor-pointer" onClick={() => removeFilter('dateOfBirth')} />
-        </div>
-      );
-    }
-
-    const createdAtRange = formatDateRange(filters.createdAt.from, filters.createdAt.to);
-    if (createdAtRange) {
-      tags.push(
-        <div key="createdAt" className="flex items-center gap-1 bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm">
-          <span>Created: {createdAtRange}</span>
-          <XMarkIcon className="h-4 w-4 cursor-pointer" onClick={() => removeFilter('createdAt')} />
-        </div>
-      );
-    }
-
-    return tags;
-  };
+      </FilterPopout>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -164,128 +175,16 @@ export const PatientFilters: React.FC<PatientFiltersProps> = ({
             </Button>
           </div>
         </div>
-        {/* Filter Tags */}
-        <div className="flex flex-wrap gap-2">
-          {renderFilterTags()}
-        </div>
+        <FilterTags filters={filters} onRemoveFilter={removeFilter} />
       </div>
 
       {showFilters && (
         <div className="flex flex-wrap gap-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-          {/* Name Filter */}
-          <div className="relative">
-            <Button
-              color={filters.name ? "info" : "gray"}
-              onClick={() => toggleFilter('name')}
-              className="flex items-center gap-2"
-            >
-              <span>Name</span>
-              <ChevronDownIcon className={`h-4 w-4 transition-transform ${activeFilter === 'name' ? 'rotate-180' : ''}`} />
-            </Button>
-            <FilterPopout isOpen={activeFilter === 'name'} onClose={() => setActiveFilter(null)}>
-              <div className="w-64">
-                <Label htmlFor="name-filter">Filter by name</Label>
-                <TextInput
-                  id="name-filter"
-                  sizing="sm"
-                  placeholder="Enter name..."
-                  value={filters.name}
-                  onChange={(e) => handleFilterChange('name', e.target.value)}
-                  className="mt-2"
-                />
-              </div>
-            </FilterPopout>
-          </div>
-
-          {/* City Filter */}
-          <div className="relative">
-            <Button
-              color={filters.city ? "info" : "gray"}
-              onClick={() => toggleFilter('city')}
-              className="flex items-center gap-2"
-            >
-              <span>City</span>
-              <ChevronDownIcon className={`h-4 w-4 transition-transform ${activeFilter === 'city' ? 'rotate-180' : ''}`} />
-            </Button>
-            <FilterPopout isOpen={activeFilter === 'city'} onClose={() => setActiveFilter(null)}>
-              <div className="w-64">
-                <Label htmlFor="city-filter">Filter by city</Label>
-                <TextInput
-                  id="city-filter"
-                  sizing="sm"
-                  placeholder="Enter city..."
-                  value={filters.city}
-                  onChange={(e) => handleFilterChange('city', e.target.value)}
-                  className="mt-2"
-                />
-              </div>
-            </FilterPopout>
-          </div>
-
-          {/* State Filter */}
-          <div className="relative">
-            <Button
-              color={filters.state ? "info" : "gray"}
-              onClick={() => toggleFilter('state')}
-              className="flex items-center gap-2"
-            >
-              <span>State</span>
-              <ChevronDownIcon className={`h-4 w-4 transition-transform ${activeFilter === 'state' ? 'rotate-180' : ''}`} />
-            </Button>
-            <FilterPopout isOpen={activeFilter === 'state'} onClose={() => setActiveFilter(null)}>
-              <div className="w-64">
-                <Label htmlFor="state-filter">Filter by state</Label>
-                <TextInput
-                  id="state-filter"
-                  sizing="sm"
-                  placeholder="Enter state..."
-                  value={filters.state}
-                  onChange={(e) => handleFilterChange('state', e.target.value)}
-                  className="mt-2"
-                />
-              </div>
-            </FilterPopout>
-          </div>
-
-          {/* Birth Date Filter */}
-          <div className="relative">
-            <Button
-              color={filters.dateOfBirth.from || filters.dateOfBirth.to ? "info" : "gray"}
-              onClick={() => toggleFilter('birthDate')}
-              className="flex items-center gap-2"
-            >
-              <span>Birth Date</span>
-              <ChevronDownIcon className={`h-4 w-4 transition-transform ${activeFilter === 'birthDate' ? 'rotate-180' : ''}`} />
-            </Button>
-            <FilterPopout isOpen={activeFilter === 'birthDate'} onClose={() => setActiveFilter(null)}>
-              <div className="w-72 space-y-4">
-                <div>
-                  <Label htmlFor="birth-date-from">From</Label>
-                  <Datepicker
-                    id="birth-date-from"
-                    sizing="sm"
-                    placeholder="From date..."
-                    value={filters.dateOfBirth.from}
-                    onChange={(date) => handleFilterChange('dateOfBirth', { ...filters.dateOfBirth, from: date })}
-                    className="mt-2"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="birth-date-to">To</Label>
-                  <Datepicker
-                    id="birth-date-to"
-                    sizing="sm"
-                    placeholder="To date..."
-                    value={filters.dateOfBirth.to}
-                    onChange={(date) => handleFilterChange('dateOfBirth', { ...filters.dateOfBirth, to: date })}
-                    className="mt-2"
-                  />
-                </div>
-              </div>
-            </FilterPopout>
-          </div>
-
-          {/* Status Filter */}
+          {renderTextFilter('name', 'Name')}
+          {renderTextFilter('city', 'City')}
+          {renderTextFilter('state', 'State')}
+          {renderDateFilter('dateOfBirth', 'Birth Date Filter', 'Birth Date')}
+          
           <div className="relative">
             <Button
               color={filters.status ? "info" : "gray"}
@@ -315,43 +214,7 @@ export const PatientFilters: React.FC<PatientFiltersProps> = ({
             </FilterPopout>
           </div>
 
-          {/* Created Date Filter */}
-          <div className="relative">
-            <Button
-              color={filters.createdAt.from || filters.createdAt.to ? "info" : "gray"}
-              onClick={() => toggleFilter('createdDate')}
-              className="flex items-center gap-2"
-            >
-              <span>Created Date</span>
-              <ChevronDownIcon className={`h-4 w-4 transition-transform ${activeFilter === 'createdDate' ? 'rotate-180' : ''}`} />
-            </Button>
-            <FilterPopout isOpen={activeFilter === 'createdDate'} onClose={() => setActiveFilter(null)}>
-              <div className="w-72 space-y-4">
-                <div>
-                  <Label htmlFor="created-date-from">From</Label>
-                  <Datepicker
-                    id="created-date-from"
-                    sizing="sm"
-                    placeholder="From date..."
-                    value={filters.createdAt.from}
-                    onChange={(date) => handleFilterChange('createdAt', { ...filters.createdAt, from: date })}
-                    className="mt-2"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="created-date-to">To</Label>
-                  <Datepicker
-                    id="created-date-to"
-                    sizing="sm"
-                    placeholder="To date..."
-                    value={filters.createdAt.to}
-                    onChange={(date) => handleFilterChange('createdAt', { ...filters.createdAt, to: date })}
-                    className="mt-2"
-                  />
-                </div>
-              </div>
-            </FilterPopout>
-          </div>
+          {renderDateFilter('createdAt', 'Created Date Filter', 'Created Date')}
         </div>
       )}
     </div>

@@ -1,26 +1,29 @@
 import React from 'react';
+import { observer } from 'mobx-react-lite';
 import { TableRow, TableCell, Button, TextInput, Select, Label, Datepicker } from 'flowbite-react';
 import { EyeIcon, PencilIcon, TrashIcon, CheckIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import type { EditingPatient, EditingDate, Patient } from './types';
+import type { EditingDate } from './types';
 import { getStatusColor } from './utils';
+import { PatientModel } from './stores/patientStore';
 
 interface PatientTableRowProps {
-  patient: Patient;
+  patient: PatientModel;
   editingId: string | null;
-  editingPatient: EditingPatient | null;
+  editingPatient: PatientModel | null;
   editingDate: EditingDate;
-  onEditClick: (patient: EditingPatient) => void;
+  onEditClick: (patient: PatientModel) => void;
   onSaveEdit: () => void;
   onCancelEdit: () => void;
   onDeletePatient: (id: string) => void;
-  onFieldChange: (field: keyof EditingPatient, value: string) => void;
+  onFieldChange: (field: keyof PatientModel, value: string) => void;
   onDateChange: (field: keyof EditingDate, value: string) => void;
 }
 
-export const PatientTableRow: React.FC<PatientTableRowProps> = ({
+const PatientTableRowComponent: React.FC<PatientTableRowProps> = ({
   patient,
   editingId,
   editingPatient,
+  editingDate,
   onEditClick,
   onSaveEdit,
   onCancelEdit,
@@ -250,4 +253,7 @@ export const PatientTableRow: React.FC<PatientTableRowProps> = ({
       </TableCell>
     </TableRow>
   );
-}; 
+};
+
+// Use observer to make the component reactive to MobX changes
+export const PatientTableRow = observer(PatientTableRowComponent); 

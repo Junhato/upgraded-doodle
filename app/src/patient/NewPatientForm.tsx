@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { usePatientStore } from './patientStore';
+import { patientStore } from './stores/patientStore';
 import { Datepicker, TextInput, Label, Select, Button } from "flowbite-react";
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
@@ -9,7 +9,6 @@ interface NewPatientFormProps {
 }
 
 export const NewPatientForm: React.FC<NewPatientFormProps> = ({ isOpen, onClose }) => {
-  const { createPatient } = usePatientStore();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -60,7 +59,7 @@ export const NewPatientForm: React.FC<NewPatientFormProps> = ({ isOpen, onClose 
         country: formData.country,
       };
 
-      await createPatient(patientData);
+      patientStore.createPatient(patientData);
       onClose();
     } catch (err) {
       setError('Failed to create patient. Please try again.');
